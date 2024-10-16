@@ -65,115 +65,126 @@ A robust `useFetch` hook should handle data fetching efficiently and provide a c
 
 ### ** Solution **
 ```
-
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+    useState,
+    useEffect,
+    useCallback,
+    useRef
+} from 'react';
 
 interface FetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  headers?: HeadersInit;
-  body?: BodyInit | null;
-  queryParams?: Record<string, string | number | boolean>;
-  authToken?: string 
+    method ? : 'GET' | 'POST' | 'PUT' | 'DELETE';
+    headers ? : HeadersInit;
+    body ? : BodyInit | null;
+    queryParams ? : Record < string, string | number | boolean > ;
+    authToken ? : string
 }
 
-interface FetchState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
+interface FetchState < T > {
+    data: T | null;
+    loading: boolean;
+    error: string | null;
 }
 
-interface UseFetchReturn<T> extends FetchState<T> {
-  refetch: () => void;
+interface UseFetchReturn < T > extends FetchState < T > {
+    refetch: () => void;
 }
 
-const useFetch = <T>(url: string, options: FetchOptions = {}): UseFetchReturn<T> => {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const cache = useRef<{ [key: string]: T }>({});
-  const controllerRef = useRef<AbortController | null>(null);
+const useFetch = < T > (url: string, options: FetchOptions = {}): UseFetchReturn < T > => {
+    const [data, setData] = useState < T | null > (null);
+    const [loading, setLoading] = useState < boolean > (false);
+    const [error, setError] = useState < string | null > (null);
+    const cache = useRef < {
+        [key: string]: T
+    } > ({});
+    const controllerRef = useRef < AbortController | null > (null);
 
-  const buildUrlWithParams = useCallback((url: string, queryParams?: Record<string, string | number | boolean>) => {
-    if (!queryParams) return url;
-    const query = new URLSearchParams();
-    Object.entries(queryParams).forEach(([key, value]) => {
-      query.append(key, String(value));
-    });
-    return `${url}?${query.toString()}`;
-  }, []);
+    const buildUrlWithParams = useCallback((url: string, queryParams ? : Record < string, string | number | boolean > ) => {
+        if (!queryParams) return url;
+        const query = new URLSearchParams();
+        Object.entries(queryParams).forEach(([key, value]) => {
+            query.append(key, String(value));
+        });
+        return `${url}?${query.toString()}`;
+    }, []);
 
-  const fetchData = useCallback(async () => {
-  const fetchUrl = await buildUrlWithParams(url, options.queryParams);
-    if (cache.current[fetchUrl]) {
-      setData(cache.current[fetchUrl]);
-      return;
-    }
+    const fetchData = useCallback(async () => {
+        const fetchUrl = await buildUrlWithParams(url, options.queryParams);
+        if (cache.current[fetchUrl]) {
+            setData(cache.current[fetchUrl]);
+            return;
+        }
 
-    setLoading(true);
-    setError(null);
+        setLoading(true);
+        setError(null);
 
-    controllerRef.current = new AbortController();
+        controllerRef.current = new AbortController();
 
-    const prepareHeaders: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(options.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
-      ...options.headers,
+        const prepareHeaders: HeadersInit = {
+            'Content-Type': 'application/json',
+            ...(options.authToken ? {
+                Authorization: `Bearer ${options.authToken}`
+            } : {}),
+            ...options.headers,
+        };
+
+        let prepareBody: BodyInit | null = options.body;
+        if (
+            headers['Content-Type'] === 'application/json' &&
+            typeof options.body === 'object' &&
+            options.body !== null
+        ) {
+            preparedBody = JSON.stringify(options.body);
+        }
+
+        try {
+            const response = await fetch(fetchUrl, {
+                method: options.method || 'GET',
+                headers: prepareHeaders,
+                body: prepareBody,
+                signal: controllerRef.current.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.status} - ${response.statusText}`);
+            }
+
+            const result: T = await response.json();
+            setData(result);
+            if (options.cacheKey) {
+                cache.current[options.cacheKey] = result;
+            }
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                setError(err.message);
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [url, options, buildUrlWithParams]);
+
+    useEffect(() => {
+        fetchData();
+
+        return () => {
+            controllerRef.current?.abort();
+        };
+    }, [fetchData]);
+
+    const refetch = useCallback(() => {
+        controllerRef.current?.abort();
+        fetchData();
+    }, [fetchData]);
+
+    return {
+        data,
+        loading,
+        error,
+        refetch
     };
-
-let prepareBody: BodyInit | null = options.body;
-  if (
-    headers['Content-Type'] === 'application/json' &&
-    typeof options.body === 'object' &&
-    options.body !== null
-  ) {
-    preparedBody = JSON.stringify(options.body);
-  }
-
-    try {
-      const response = await fetch(fetchUrl, {
-        method: options.method || 'GET',
-        headers: prepareHeaders,
-        body: prepareBody,
-        signal: controllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status} - ${response.statusText}`);
-      }
-
-      const result: T = await response.json();
-      setData(result);
-      if (options.cacheKey) {
-        cache.current[options.cacheKey] = result;
-      }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [url, options, buildUrlWithParams]);
-
-  useEffect(() => {
-    fetchData();
-
-    return () => {
-      controllerRef.current?.abort();
-    };
-  }, [fetchData]);
-
-  const refetch = useCallback(() => {
-    controllerRef.current?.abort();
-    fetchData();
-  }, [fetchData]);
-
-  return { data, loading, error, refetch };
 };
 
 export default useFetch;
-
 
 ```
 ---
@@ -227,63 +238,72 @@ A well-designed `useDebounce` hook should provide a simple yet flexible way to d
 ### ** Solution **
 
 ```
-import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+    useState,
+    useEffect,
+    useRef,
+    useCallback
+} from 'react';
 
 interface UseDebounceOptions {
-  delay?: number;
-  immediate?: boolean;
+    delay ? : number;
+    immediate ? : boolean;
 }
 
-function useDebounce<T>(
-  value: T,
-  options: UseDebounceOptions = {}
+function useDebounce < T > (
+    value: T,
+    options: UseDebounceOptions = {}
 ): {
-  debouncedValue: T;
-  cancel: () => void;
-  flush: () => void;
+    debouncedValue: T;
+    cancel: () => void;
+    flush: () => void;
 } {
-  const { delay = 300, immediate = false } = options;
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const immediateRef = useRef<boolean>(immediate);
-  const latestValueRef = useRef<T>(value);
+    const { delay = 300, immediate = false } = options;
+    const [debouncedValue, setDebouncedValue] = useState < T > (value);
+    const timerRef = useRef < NodeJS.Timeout | null > (null);
+    const immediateRef = useRef < boolean > (immediate);
+    const latestValueRef = useRef < T > (value);
 
-  const cancel = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+    const cancel = useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    }, []);
 
-  const flush = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      setDebouncedValue(latestValueRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+    const flush = useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            setDebouncedValue(latestValueRef.current);
+            timerRef.current = null;
+        }
+    }, []);
 
-  useEffect(() => {
-    latestValueRef.current = value;
+    useEffect(() => {
+        latestValueRef.current = value;
 
-    if (immediateRef.current) {
-      setDebouncedValue(value);
-      immediateRef.current = false;
-      return;
-    }
+        if (immediateRef.current) {
+            setDebouncedValue(value);
+            immediateRef.current = false;
+            return;
+        }
 
-    cancel();
+        cancel();
 
-    timerRef.current = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
+        timerRef.current = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
 
-    return () => {
-      cancel();
+        return () => {
+            cancel();
+        };
+    }, [value, delay, cancel]);
+
+    return {
+        debouncedValue,
+        cancel,
+        flush
     };
-  }, [value, delay, cancel]);
-
-  return { debouncedValue, cancel, flush };
 }
 
 export default useDebounce;
