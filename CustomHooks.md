@@ -124,7 +124,7 @@ const useFetch = <T>(url: string, options: FetchOptions = {}): UseFetchReturn<T>
       const response = await fetch(fetchUrl, {
         method: options.method || 'GET',
         headers,
-        body: options.body || null,
+        body: JSON.stringify(options.body),
         signal: controllerRef.current.signal,
       });
 
@@ -213,7 +213,7 @@ A well-designed `useDebounce` hook should provide a simple yet flexible way to d
 - **Comprehensive Documentation:**
   - Clear instructions on usage, parameters, and return values.
 
-### **Answer**
+### ** Solution **
 
 ```
 import { useState, useEffect, useRef, useCallback } from 'react';
