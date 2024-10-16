@@ -65,6 +65,8 @@ A robust `useFetch` hook should handle data fetching efficiently and provide a c
 
 ### ** Solution **
 ```
+
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface FetchOptions {
@@ -72,8 +74,7 @@ interface FetchOptions {
   headers?: HeadersInit;
   body?: BodyInit | null;
   queryParams?: Record<string, string | number | boolean>;
-  authToken?: string;
-  cacheKey?: string;
+  authToken?: string 
 }
 
 interface FetchState<T> {
@@ -103,28 +104,37 @@ const useFetch = <T>(url: string, options: FetchOptions = {}): UseFetchReturn<T>
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (options.cacheKey && cache.current[options.cacheKey]) {
-      setData(cache.current[options.cacheKey]);
+  const fetchUrl = await buildUrlWithParams(url, options.queryParams);
+    if (cache.current[fetchUrl]) {
+      setData(cache.current[fetchUrl]);
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const fetchUrl = buildUrlWithParams(url, options.queryParams);
     controllerRef.current = new AbortController();
 
-    const headers: HeadersInit = {
+    const prepareHeaders: HeadersInit = {
       'Content-Type': 'application/json',
       ...(options.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
       ...options.headers,
     };
 
+let prepareBody: BodyInit | null = options.body;
+  if (
+    headers['Content-Type'] === 'application/json' &&
+    typeof options.body === 'object' &&
+    options.body !== null
+  ) {
+    preparedBody = JSON.stringify(options.body);
+  }
+
     try {
       const response = await fetch(fetchUrl, {
         method: options.method || 'GET',
-        headers,
-        body: JSON.stringify(options.body),
+        headers: prepareHeaders,
+        body: prepareBody,
         signal: controllerRef.current.signal,
       });
 
@@ -163,6 +173,7 @@ const useFetch = <T>(url: string, options: FetchOptions = {}): UseFetchReturn<T>
 };
 
 export default useFetch;
+
 
 ```
 ---
