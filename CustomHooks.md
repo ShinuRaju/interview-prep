@@ -96,13 +96,9 @@ const useFetch = <T,>(
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-
-  // Initialize cache with a structured cache entry
   const cache = useRef<{ [key: string]: CacheEntry<T> }>({});
   const controllerRef = useRef<AbortController | null>(null);
-
-  // Define cache duration (e.g., 5 minutes)
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+  const CACHE_DURATION = 5 * 60 * 1000;
 
   const buildURLParams = useCallback(
     (
@@ -110,124 +106,112 @@ const useFetch = <T,>(
       queryParams?: Record<string, string | number | boolean>
     ): string => {
       if (!queryParams) return url;
-
       const query = new URLSearchParams();
-
       Object.entries(queryParams).forEach(([key, value]) => {
         query.append(key, String(value));
       });
-
       return `${url}?${query.toString()}`;
     },
     []
   );
 
   const fetchData = useCallback(async () => {
-    // Abort any ongoing fetch
-    controllerRef.current?.abort();
+    console.log("Fetching data...");
 
-    // Initialize a new AbortController for the current fetch
-    controllerRef.current = new AbortController();
+    if (controllerRef.current) {
+      console.log("Aborting previous request");
+      controllerRef.current.abort();
+      controllerRef.current = null;
+    }
 
-    // Construct the full URL with query parameters
+    const controller = new AbortController();
+    controllerRef.current = controller;
     const fetchURL = buildURLParams(url, options?.queryParams);
+    console.log("Fetch URL:", fetchURL);
 
-    // Check if the response is already cached and not expired
-    if (Object.hasOwn(cache.current, fetchURL)) {
-      const cacheEntry = cache.current[fetchURL];
-      if (Date.now() - cacheEntry.timestamp < CACHE_DURATION) {
-        setData(cacheEntry.data);
-        setError(null);
-        setLoading(false);
-        return;
-      } else {
-        // Cache expired; remove the entry
-        delete cache.current[fetchURL];
-      }
+    if (
+      cache.current[fetchURL] &&
+      Date.now() - cache.current[fetchURL].timestamp < CACHE_DURATION
+    ) {
+      console.log("Using cached data");
+      setData(cache.current[fetchURL].data);
+      setError(null);
+      setLoading(false);
+      return;
     }
 
     setLoading(true);
     setError(null);
     setData(null);
 
-    // Prepare headers
-    const prepareHeaders: HeadersInit = {
-      ...(options?.method !== "GET" && {
-        "Content-Type": "application/json",
-      }),
-      ...(options?.authToken
-        ? { Authorization: `Bearer ${options.authToken}` }
-        : {}),
-      ...options?.headers,
-    };
-
-    // Prepare body
-    let prepareBody: BodyInit | undefined = undefined;
-
-    const method = options?.method || "GET";
-    if (method !== "GET" && options?.body && typeof options.body === "object") {
-      prepareBody = JSON.stringify(options.body);
-    } else {
-      prepareBody = options?.body;
-    }
-
     try {
       const response = await fetch(fetchURL, {
-        method,
-        headers: prepareHeaders,
-        body: prepareBody,
         signal: controllerRef.current.signal,
+        method: options?.method || "GET",
+        headers: {
+          ...(options?.method !== "GET" && {
+            "Content-Type": "application/json",
+          }),
+          ...(options?.authToken
+            ? { Authorization: `Bearer ${options.authToken}` }
+            : {}),
+          ...options?.headers,
+        },
+        body: options?.body ? JSON.stringify(options.body) : undefined,
       });
-
+      console.log("response", response);
       if (!response.ok) {
-        let errorMessage = `Error: ${response.status} - ${response.statusText}`;
+        throw new Error(`Error: ${response.status} - ${response.statusText}`);
       }
 
       const responseData: T = await response.json();
+      console.log("Fetched data:", responseData);
       setData(responseData);
-
-      // Cache the response data with a timestamp
-      cache.current[fetchURL] = {
-        data: responseData,
-        timestamp: Date.now(),
-      };
-    } catch (e: any) {
-      if (e.name !== "AbortError") {
-        setError(e.message || "An unknown error occurred");
+      cache.current[fetchURL] = { data: responseData, timestamp: Date.now() };
+    } catch (error: any) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        console.log("Fetch aborted");
+      } else {
+        setError(error.message);
+        console.error("Fetch error:", error.message);
       }
     } finally {
       setLoading(false);
     }
   }, [url, options, buildURLParams]);
-  
+
   const refetch = useCallback(() => {
     fetchData();
   }, [fetchData]);
 
   const cancel = useCallback(() => {
-    controllerRef.current?.abort();
+    if (controllerRef.current) {
+      console.log("Cancelling fetch");
+      controllerRef.current.abort();
+      controllerRef.current = null;
+    }
     setLoading(false);
   }, []);
 
-  /**
-   * Fetch data when the hook is first used or when `url` or `options` change.
-   */
   useEffect(() => {
     if (options?.autoFetch !== false) {
       fetchData();
     }
-
-    // Cleanup function to abort fetch on component unmount or before next fetch
-    return () => {
-      controllerRef.current?.abort();
-    };
-  }, [fetchData, options?.autoFetch]);
+    return () => controllerRef.current?.abort();
+  }, [
+    url,
+    options?.body,
+    options?.headers,
+    options?.queryParams,
+    options?.method,
+    options?.autoFetch,
+    options?.authToken,
+  ]);
 
   return { data, loading, error, refetch, cancel };
 };
 
 export default useFetch;
-
 
 ```
 ---
