@@ -265,75 +265,78 @@ A well-designed `useDebounce` hook should provide a simple yet flexible way to d
 ### ** Solution **
 
 ```
-import {
-    useState,
-    useEffect,
-    useRef,
-    useCallback
-} from 'react';
+
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface UseDebounceOptions {
-    delay ? : number;
-    immediate ? : boolean;
+  delay?: number;
+  immediate?: boolean;
 }
 
-function useDebounce < T > (
-    value: T,
-    options: UseDebounceOptions = {}
+function useDebounce<T>(
+  value: T,
+  callback?: (debouncedValue: T) => void,
+  options: UseDebounceOptions = {}
 ): {
-    debouncedValue: T;
-    cancel: () => void;
-    flush: () => void;
+  debouncedValue: T;
+  cancel: () => void;
+  flush: () => void;
 } {
-    const { delay = 300, immediate = false } = options;
-    const [debouncedValue, setDebouncedValue] = useState < T > (value);
-    const timerRef = useRef < NodeJS.Timeout | null > (null);
-    const immediateRef = useRef < boolean > (immediate);
-    const latestValueRef = useRef < T > (value);
+  const { delay = 300, immediate = false } = options;
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const immediateRef = useRef<boolean>(immediate);
+  const latestValueRef = useRef<T>(value);
+  const callbackRef = useRef(callback);
 
-    const cancel = useCallback(() => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    }, []);
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
-    const flush = useCallback(() => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            setDebouncedValue(latestValueRef.current);
-            timerRef.current = null;
-        }
-    }, []);
+  const cancel = useCallback(() => {
+    clearTimeout(timerRef.current!);
+    timerRef.current = null;
+  }, []);
 
-    useEffect(() => {
-        latestValueRef.current = value;
+  const flush = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      setDebouncedValue(latestValueRef.current);
+      timerRef.current = null;
+      callbackRef.current?.(latestValueRef.current);
+    }
+  }, []);
 
-        if (immediateRef.current) {
-            setDebouncedValue(value);
-            immediateRef.current = false;
-            return;
-        }
+  useEffect(() => {
+    latestValueRef.current = value;
 
-        cancel();
+    if (immediateRef.current) {
+      setDebouncedValue(value);
+      callbackRef.current?.(value);
+      immediateRef.current = false;
+      return;
+    }
 
-        timerRef.current = setTimeout(() => {
-            setDebouncedValue(value);
-        }, delay);
+    cancel();
 
-        return () => {
-            cancel();
-        };
-    }, [value, delay, cancel]);
+    timerRef.current = setTimeout(() => {
+      setDebouncedValue(value);
+      callbackRef.current?.(value);
+    }, delay);
 
-    return {
-        debouncedValue,
-        cancel,
-        flush
-    };
+    return cancel;
+  }, [value, delay, cancel]);
+
+  return {
+    debouncedValue,
+    cancel,
+    flush,
+  };
 }
 
 export default useDebounce;
+
+
 
 ```
 
